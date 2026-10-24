@@ -72,13 +72,26 @@ router.post('/start', authMiddleware, async (req, res) => {
     let targetListId = null;
 
     if (listId) {
-      const list = await DrawingList.findOne({ _id: listId, userId: req.user.userId });
-      if (!list) {
-        return res.status(404).json({ message: 'Selected drawing list not found' });
+      if (typeof listId === 'string' && listId.startsWith('builtin:')) {
+        const catId = listId.replace('builtin:', '');
+        const { BUILT_IN_CATEGORIES, MASTER_LIBRARY_CATEGORY } = require('../data/builtInLists');
+        const allBuiltIns = [MASTER_LIBRARY_CATEGORY, ...BUILT_IN_CATEGORIES];
+        const matched = allBuiltIns.find(c => c.id === catId);
+        if (!matched) {
+          return res.status(404).json({ message: 'Selected built-in category not found' });
+        }
+        subjects = [...matched.subjects];
+        listName = matched.name;
+        targetListId = null;
+      } else {
+        const list = await DrawingList.findOne({ _id: listId, userId: req.user.userId });
+        if (!list) {
+          return res.status(404).json({ message: 'Selected drawing list not found' });
+        }
+        subjects = [...list.subjects];
+        listName = list.name;
+        targetListId = list._id;
       }
-      subjects = [...list.subjects];
-      listName = list.name;
-      targetListId = list._id;
     } else if (customSubjects) {
       subjects = parseSubjects(customSubjects);
       if (customName && customName.trim()) {

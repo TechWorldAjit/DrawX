@@ -9,7 +9,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // POST /api/ai/generate - Secure server-side Gemini prompt generator
 router.post('/generate', authMiddleware, async (req, res) => {
   try {
-    const { category = 'everyday objects', difficulty = 'Medium', count = 10 } = req.body;
+    const { prompt: userPrompt, category, difficulty = 'Medium', count = 10 } = req.body;
 
     if (!GEMINI_API_KEY) {
       return res.status(503).json({
@@ -17,22 +17,37 @@ router.post('/generate', authMiddleware, async (req, res) => {
       });
     }
 
-    const numCount = Math.min(Math.max(parseInt(count, 10) || 10, 3), 40);
+    let promptText = '';
 
-    const promptText = `
-You are an expert drawing coach preparing practical drawing practice prompts for an artist drawing on A4 paper.
+    if (userPrompt && userPrompt.trim()) {
+      // 1. User specified a freeform topic / prompt for 100-200 drawing objects
+      promptText = `You are an expert drawing coach preparing practical drawing practice prompts for an artist drawing on A4 paper.
+Generate between 100 and 200 distinct, specific, simple, drawable object names based on this topic or theme: "${userPrompt.trim()}".
+
+CRITICAL INSTRUCTIONS:
+1. Return ONLY individual object names separated by commas.
+2. NO headings, NO explanations, NO numbering, NO bullet points, NO category labels, NO markdown formatting, NO introductory or concluding text.
+3. Every single item must be a specific, simple, tangible, drawable object or subject suitable for sketching individually on A4 paper.
+4. Avoid large landscapes, buildings, entire cities, rooms, scenes, or abstract concepts. Keep each item as a discrete physical object or figure (e.g., "vintage typewriter", "coffee mug", "pocket watch", "leather boot").
+5. Do NOT repeat items. Provide between 100 and 200 unique comma-separated items.
+6. Output ONLY the comma-separated list in this format:
+Item 1, Item 2, Item 3, Item 4, Item 5`;
+    } else {
+      // 2. Legacy category/difficulty/count mode
+      const numCount = Math.min(Math.max(parseInt(count, 10) || 10, 3), 40);
+      promptText = `You are an expert drawing coach preparing practical drawing practice prompts for an artist drawing on A4 paper.
 Generate exactly ${numCount} unique, tangible drawing subjects.
 
-Category: ${category}
-Difficulty: ${difficulty} (Easy = simple geometric forms & silhouettes; Medium = everyday objects with realistic proportions & perspective; Hard = complex anatomy, dynamic angles, mechanical details, or textured surfaces).
+Category: ${category || 'everyday objects'}
+Difficulty: ${difficulty} (Easy = simple geometric forms; Medium = everyday objects with realistic proportions; Hard = complex anatomy, dynamic angles, mechanical details).
 
 CRITICAL INSTRUCTIONS:
 1. Return ONLY a valid JSON array of strings containing the object names.
 2. Example format: ["Transparent water bottle", "Vintage alarm clock", "Bicycle pedal", "Running human figure", "Dog sitting sideways"]
 3. NO markdown formatting, NO introductory text, NO bullet points, NO explanations.
 4. Each item must be a specific, clearly visualizable subject suitable for quick observational sketching.
-5. Do NOT include duplicates.
-`;
+5. Do NOT include duplicates.`;
+    }
 
     // Try models with fallback: gemini-3.5-flash-lite, then gemini-3.5-flash
     const modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-flash-latest'];
@@ -51,10 +66,10 @@ CRITICAL INSTRUCTIONS:
               contents: [{ parts: [{ text: promptText }] }],
               generationConfig: {
                 temperature: 0.7,
-                maxOutputTokens: 1000
+                maxOutputTokens: 4096
               }
             }),
-            signal: AbortSignal.timeout(12000)
+            signal: AbortSignal.timeout(25000)
           }
         );
 
@@ -78,7 +93,7 @@ CRITICAL INSTRUCTIONS:
       });
     }
 
-    // Clean JSON text (strip markdown code blocks if model wrapped it in ```json ... ```)
+    // Clean text (strip markdown code blocks if present)
     let cleaned = rawText.trim();
     if (cleaned.startsWith('```')) {
       cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
@@ -91,14 +106,16 @@ CRITICAL INSTRUCTIONS:
         throw new Error('Result is not an array');
       }
     } catch (parseErr) {
-      // Fallback: split by lines/commas if model didn't return pure JSON
+      // Split by commas and lines
       prompts = parseSubjects(cleaned);
     }
 
     // Clean, trim, and deduplicate prompts
     const validPrompts = parseSubjects(prompts);
+    const commaSeparatedText = validPrompts.join(', ');
 
     return res.json({
+      text: commaSeparatedText,
       prompts: validPrompts,
       count: validPrompts.length,
       category,

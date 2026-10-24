@@ -29,6 +29,21 @@ function parseSubjects(input) {
   return validSubjects;
 }
 
+const { BUILT_IN_CATEGORIES, ALL_MASTER_SUBJECTS, MASTER_LIBRARY_CATEGORY } = require('../data/builtInLists');
+
+// GET /api/lists/built-in - Get all 20 built-in categories plus Master Library (1,000+ objects)
+router.get('/built-in', authMiddleware, async (req, res) => {
+  try {
+    return res.json({
+      master: MASTER_LIBRARY_CATEGORY,
+      categories: BUILT_IN_CATEGORIES,
+      totalCount: ALL_MASTER_SUBJECTS.length
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Error fetching built-in categories', error: err.message });
+  }
+});
+
 // GET /api/lists - Get all lists for current user
 router.get('/', authMiddleware, async (req, res) => {
   try {

@@ -49,6 +49,7 @@ export const api = {
 
   // Lists
   getLists: () => apiRequest('/lists'),
+  getBuiltInLists: () => apiRequest('/lists/built-in'),
   getList: (id) => apiRequest(`/lists/${id}`),
   createList: (payload) => apiRequest('/lists', { method: 'POST', body: JSON.stringify(payload) }),
   updateList: (id, payload) => apiRequest(`/lists/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
